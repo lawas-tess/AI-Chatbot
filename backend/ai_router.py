@@ -23,14 +23,20 @@ If internship related → InternTrack
 If workplace communication → MentorBridge
 """
 
-def chat_ai(message):
+def chat_ai(message, history=None):
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    if history:
+        messages.extend(history)
+
+    messages.append({"role": "user", "content": message})
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {"role":"system","content":SYSTEM_PROMPT},
-            {"role":"user","content":message}
-        ]
+        messages=messages
     )
 
-    return {"reply": response.choices[0].message.content}
+    reply = response.choices[0].message.content
+
+    return {"reply": reply}

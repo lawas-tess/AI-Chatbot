@@ -51,15 +51,19 @@ user_input = st.chat_input("Ask something...")
 
 if user_input:
 
-    st.session_state.messages.append({"role":"user","content":user_input})
+    st.session_state.messages.append(
+        {"role":"user","content":user_input}
+    )
 
     res = requests.post(
         f"{API}/chat",
-        params={"message": user_input}
+        json={"message": user_input}
     )
 
     reply = res.json()["reply"]
 
-    st.session_state.messages.append({"role":"assistant","content":reply})
+    st.session_state.messages.append(
+        {"role":"assistant","content":reply}
+    )
 
     st.rerun()
