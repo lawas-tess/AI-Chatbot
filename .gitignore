@@ -1,0 +1,24 @@
+# Environment variables - NEVER push API keys
+.env
+*.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
