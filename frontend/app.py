@@ -63,6 +63,12 @@ if st.session_state.page == "InternTrack":
         for i, s in enumerate(it_suggestions):
             if st.button(s, key=f"it_btn_{i}", use_container_width=True):
                 st.session_state.interntrack_messages.append({"role": "user", "content": s})
+                try:
+                    res = requests.post(f"{API}/chat", json={"message": s})
+                    reply = res.json()["reply"]
+                except Exception:
+                    reply = "_(Could not connect to backend. Make sure the backend is running.)_"
+                st.session_state.interntrack_messages.append({"role": "assistant", "content": reply})
                 st.rerun()
 
     for m in st.session_state.interntrack_messages:
@@ -106,6 +112,12 @@ elif st.session_state.page == "MentorBridge":
         for i, s in enumerate(mb_suggestions):
             if st.button(s, key=f"mb_btn_{i}", use_container_width=True):
                 st.session_state.mentorbridge_messages.append({"role": "user", "content": s})
+                try:
+                    res = requests.post(f"{API}/chat", json={"message": s})
+                    reply = res.json()["reply"]
+                except Exception:
+                    reply = "_(Could not connect to backend. Make sure the backend is running.)_"
+                st.session_state.mentorbridge_messages.append({"role": "assistant", "content": reply})
                 st.rerun()
 
     for m in st.session_state.mentorbridge_messages:
