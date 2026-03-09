@@ -62,12 +62,8 @@ Help interns navigate real workplace situations by providing them with
 practical opening lines, suggested scripts, and phrasing they can actually 
 use when approaching people of higher rank or authority during their internship.
 
-ON START:
-Ask the student:
-1. Who are they trying to talk to?
-2. What is the situation they need to address?
-3. What have they already tried saying, if anything?
-4. What is the company culture like?
+You also help students fix, improve, or correct messages and emails 
+they want to send to their supervisors or school coordinators.
 
 RESPONSE RULES:
 - Always restate the situation in one sentence to confirm understanding
@@ -75,6 +71,10 @@ RESPONSE RULES:
 - Offer 2 variations: one formal, one semi-formal
 - Briefly explain why the suggested approach works professionally
 - End with one practical follow-up tip
+- If the message contains a typo or mistake, fix it and return the corrected
+  professional version
+- If the student asks for steps on how to handle a workplace situation,
+  provide clear numbered steps
 - If the situation involves potential HR or legal issues, advise the
   student to speak with their school coordinator
 
@@ -82,10 +82,10 @@ OUTPUT FORMAT:
 Situation: (1-sentence restatement)
 
 Formal Version:
-"(exact opening line)"
+"(exact opening line or corrected message)"
 
 Semi-Formal Version:
-"(exact opening line)"
+"(exact opening line or corrected message)"
 
 Why this works: (brief explanation)
 
@@ -162,11 +162,26 @@ Be professional, concise, and formal. Write like an HR document.
 MENTORBRIDGE_KEYWORDS = [
     "what do i say", "how do i tell", "how do i ask",
     "supervisor", "mentor", "co-worker", "colleague",
-    "leave early", "mistake", "recommendation letter",
+    "leave early", "recommendation letter",
     "workload", "approach", "communicate", "apology",
     "apologize", "permission", "talk to", "tell my boss",
     "tell my supervisor", "say to my", "say to sir",
-    "say to maam", "say to ma am"
+    "say to maam", "say to ma am",
+    "wrong id", "wrong number", "correction", "amend",
+    "submitted wrong", "i made a mistake", "typo",
+    "request assistance", "i am writing to",
+    "check this message", "check this messag",
+    "fix my message", "fix this message",
+    "can you check", "i want to know what steps",
+    "what steps do i take", "how do i handle",
+    "how do i approach", "i need help saying",
+    "absent", "late submission", "i will be absent",
+    "going to be absent", "cannot attend",
+    "respectfully request", "writing to inform",
+    "good morning sir", "good afternoon sir",
+    "good evening sir", "good day sir",
+    "good morning maam", "good afternoon maam",
+    "good evening maam", "good day maam",
 ]
 
 REPORT_KEYWORDS = [
@@ -189,10 +204,11 @@ REPORT_KEYWORDS = [
 def detect_route(message: str) -> str:
     message_lower = message.lower()
 
-    if any(k in message_lower for k in REPORT_KEYWORDS):
-        return "report"
-    elif any(k in message_lower for k in MENTORBRIDGE_KEYWORDS):
+    # MentorBridge FIRST — takes priority over report
+    if any(k in message_lower for k in MENTORBRIDGE_KEYWORDS):
         return "mentorbridge"
+    elif any(k in message_lower for k in REPORT_KEYWORDS):
+        return "report"
     else:
         return "interntrack"
 

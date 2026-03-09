@@ -143,6 +143,7 @@ elif st.session_state.page == "Report Writer":
     task_input = st.text_area(
         "Enter your tasks (one per line or just type naturally)",
         placeholder="""Example:
+-Include what month if Monthly Report.
 - printed documents for sir john
 - attended morning meeting
 - updated excel spreadsheet for inventory
