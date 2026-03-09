@@ -7,7 +7,7 @@ st.set_page_config(layout="wide", page_title="InternAssist AI")
 
 # ── SIDEBAR NAV ───────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.title("InternAssist")
+    st.title("InternAssist AI")
     st.caption("CSIT349-G01")
     st.divider()
 
@@ -19,6 +19,9 @@ with st.sidebar:
 
     if st.button("MentorBridge", use_container_width=True):
         st.session_state.page = "MentorBridge"
+
+    if st.button("Report Writer", use_container_width=True):
+        st.session_state.page = "Report Writer"
 
 # ── INTERNTRACK PAGE ──────────────────────────────────────────────────────────
 if st.session_state.page == "InternTrack":
@@ -111,3 +114,50 @@ elif st.session_state.page == "MentorBridge":
             reply = "_(Could not connect to backend. Make sure the backend is running.)_"
         st.session_state.mentorbridge_messages.append({"role": "assistant", "content": reply})
         st.rerun()
+
+# ── REPORT WRITER PAGE ────────────────────────────────────────────────────────
+elif st.session_state.page == "Report Writer":
+
+    st.title("Report Activity Writer")
+    st.caption("Input your tasks for the day and the AI will generate a professional report.")
+    st.divider()
+
+    report_type = st.selectbox(
+        "Report Type",
+        ["Daily Report", "Weekly Report", "Monthly Report"],
+        key="report_type"
+    )
+
+    task_input = st.text_area(
+        "Enter your tasks (one per line or just type naturally)",
+        placeholder="""Example:
+- printed documents for sir john
+- attended morning meeting
+- updated excel spreadsheet for inventory
+- got coffee for the team
+- filed papers in cabinet""",
+        height=200,
+        key="task_input"
+    )
+
+    if st.button("Generate Report", use_container_width=True, key="generate_report"):
+        if task_input.strip() == "":
+            st.warning("Please enter your tasks first.")
+        else:
+            message = f"Please write a {report_type} for these tasks: {task_input}"
+            try:
+                res = requests.post(f"{API}/chat", json={"message": message})
+                report_output = res.json()["reply"]
+                st.divider()
+                st.subheader("Generated Report")
+                st.markdown(report_output)
+                st.divider()
+                st.download_button(
+                    label="Download Report as .txt",
+                    data=report_output,
+                    file_name=f"{report_type.replace(' ', '_')}.txt",
+                    mime="text/plain",
+                    use_container_width=True
+                )
+            except Exception:
+                st.error("_(Could not connect to backend. Make sure the backend is running.)_")
