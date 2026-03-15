@@ -1,6 +1,14 @@
 import os
+from datetime import datetime
 from dotenv import load_dotenv
 from openai import OpenAI
+from database import chat_collection, config_collection
+
+try:
+    import holidays as hol
+    _HOLIDAYS_AVAILABLE = True
+except ImportError:
+    _HOLIDAYS_AVAILABLE = False
 
 load_dotenv()
 
@@ -214,6 +222,50 @@ def detect_route(message: str) -> str:
 
 # ── MAIN CHAT FUNCTION ────────────────────────────────────────────────────────
 
+def _get_country_holidays(country):
+    if not _HOLIDAYS_AVAILABLE:
+        return ""
+    _country_map = {"Philippines": "PH", "Singapore": "SG", "USA": "US", "Japan": "JP"}
+    code = _country_map.get(country)
+    if not code:
+        return ""
+    try:
+        h = hol.country_holidays(code, years=datetime.now().year)
+        return "\n".join(
+            f"  - {d.strftime('%B %d, %Y')}: {name}" for d, name in sorted(h.items())
+        )
+    except Exception:
+        return ""
+
+
+def _build_interntrack_prompt():
+    config = config_collection.find_one({}, {"_id": 0})
+    if not config:
+        return INTERNTRACK_PROMPT
+
+    country = config.get("country", "")
+    holidays_text = _get_country_holidays(country)
+
+    config_section = f"""
+
+STUDENT PROFILE (already configured — do NOT ask for this information again):
+- Total Required Hours: {config.get('total_hours', 'Not set')}
+- Current Logged Hours: {config.get('current_hours', 0)}
+- Daily Working Hours: {config.get('daily_hours', 8)} hrs/day
+- Internship Start Date: {config.get('start_date', 'Not set')}
+- Country: {country or 'Not set'}
+- Working Days: {', '.join(config.get('working_days', ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']))}
+"""
+
+    if holidays_text:
+        config_section += f"""
+{country} Public Holidays {datetime.now().year} (do NOT count these as working days):
+{holidays_text}
+"""
+
+    return INTERNTRACK_PROMPT + config_section
+
+
 def chat_ai(message, history=None):
 
     route = detect_route(message)
@@ -223,7 +275,7 @@ def chat_ai(message, history=None):
     elif route == "mentorbridge":
         system = MENTORBRIDGE_PROMPT
     else:
-        system = INTERNTRACK_PROMPT
+        system = _build_interntrack_prompt()
 
     messages = [{"role": "system", "content": system}]
 
@@ -237,7 +289,16 @@ def chat_ai(message, history=None):
             model="gpt-4o-mini",
             messages=messages
         )
-        return {"reply": response.choices[0].message.content}
+        reply = response.choices[0].message.content
+
+        chat_collection.insert_one({
+            "user": message,
+            "assistant": reply,
+            "route": route,
+            "timestamp": datetime.utcnow()
+        })
+
+        return {"reply": reply}
 
     except Exception as e:
         return {"reply": f"Error connecting to AI: {str(e)}"}

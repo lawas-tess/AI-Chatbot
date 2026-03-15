@@ -1,21 +1,24 @@
 from datetime import datetime
-
-hours_logged = 0
+from database import hours_collection, tasks_collection
 
 def log_hours(data):
-
-    global hours_logged
 
     hours = int(data.get("hours", 0))
     task = data.get("task", "")
 
-    hours_logged += hours
+    hours_collection.insert_one({
+        "hours": hours,
+        "task": task,
+        "logged_at": datetime.utcnow()
+    })
+
+    total_hours = sum(doc["hours"] for doc in hours_collection.find({}, {"hours": 1}))
 
     return {
         "message": "Hours logged successfully",
         "task": task,
         "hours_added": hours,
-        "total_hours": hours_logged
+        "total_hours": total_hours
     }
 
 def progress(total, current):

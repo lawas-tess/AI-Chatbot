@@ -1,7 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import requests
-from datetime import datetime
+from datetime import datetime, date
 import time
 from styles import get_full_css
 
@@ -65,6 +65,43 @@ def send_message(user_input, message_list):
         reply = f"Error: {str(e)}"
     message_list.append({"role": "assistant", "content": reply})
     return reply
+
+def load_chat_history(route):
+    """Load saved chat history for a given route"""
+    try:
+        res = requests.get(f"{API}/chat_history/{route}", timeout=10)
+        res.raise_for_status()
+        return res.json().get("messages", [])
+    except Exception:
+        return []
+
+def load_saved_reports():
+    """Load saved reports from the backend"""
+    try:
+        res = requests.get(f"{API}/reports", timeout=10)
+        res.raise_for_status()
+        return res.json().get("reports", [])
+    except Exception:
+        return []
+
+def save_report_entry(report_type, task_input, report_content):
+    """Persist a generated report to the backend"""
+    payload = {
+        "report_type": report_type,
+        "task_input": task_input,
+        "content": report_content,
+        "created_at": datetime.utcnow().isoformat()
+    }
+    response = requests.post(f"{API}/reports", json=payload, timeout=10)
+    response.raise_for_status()
+    payload["report_id"] = response.json().get("report_id")
+    return payload
+
+def delete_saved_report(report_id):
+    """Delete a saved report from the backend"""
+    response = requests.delete(f"{API}/reports/{report_id}", timeout=10)
+    response.raise_for_status()
+    return response.json().get("deleted", False)
 
 def render_progress(current, total):
     """Render modern progress bar"""
@@ -270,7 +307,16 @@ if st.session_state.page == "Dashboard":
 # INTERNTRACK PAGE
 # ══════════════════════════════════════════════════════════════════════════════
 elif st.session_state.page == "InternTrack":
-    
+
+    # Load saved config from backend once per session
+    if "intern_config" not in st.session_state:
+        try:
+            cfg_res = requests.get(f"{API}/get_config", timeout=5)
+            st.session_state.intern_config = cfg_res.json() if cfg_res.ok else {}
+        except Exception:
+            st.session_state.intern_config = {}
+    cfg = st.session_state.intern_config
+
     # Hero
     st.markdown("""
     <div class="hero-container">
@@ -288,27 +334,38 @@ elif st.session_state.page == "InternTrack":
     """, unsafe_allow_html=True)
     
     # Configuration
-    with st.expander("Configuration", expanded=False):
+    with st.expander("Configuration", expanded=not bool(cfg)):
         col1, col2, col3 = st.columns(3)
         with col1:
-            total_hours = st.number_input("Total Required Hours", value=500, min_value=1)
-            current_hours = st.number_input("Current Hours", value=0, min_value=0)
+            total_hours = st.number_input("Total Required Hours", value=int(cfg.get("total_hours", 500)), min_value=1)
+            current_hours = st.number_input("Current Hours", value=int(cfg.get("current_hours", 0)), min_value=0)
         with col2:
-            daily_hours = st.number_input("Daily Hours", value=8, min_value=1, max_value=24)
-            start_date = st.date_input("Start Date")
+            daily_hours = st.number_input("Daily Hours", value=int(cfg.get("daily_hours", 8)), min_value=1, max_value=24)
+            _saved_date = cfg.get("start_date")
+            start_date = st.date_input("Start Date",
+                value=date.fromisoformat(_saved_date) if _saved_date else datetime.now().date())
         with col3:
-            country = st.selectbox("Country", ["Singapore", "Philippines", "USA", "Japan", "Other"])
-            days = st.multiselect("Working Days", ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], 
-                                default=["Mon", "Tue", "Wed", "Thu", "Fri"])
-        if st.button("Save", use_container_width=True):
-            st.success("Saved!")
-    
-    # Progress
-    if 'current_hours' not in dir():
-        current_hours = 0
-        total_hours = 500
-        daily_hours = 8
-    
+            _countries = ["Singapore", "Philippines", "USA", "Japan", "Other"]
+            country = st.selectbox("Country", _countries,
+                index=_countries.index(cfg["country"]) if cfg.get("country") in _countries else 0)
+            days = st.multiselect("Working Days", ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+                                default=cfg.get("working_days", ["Mon", "Tue", "Wed", "Thu", "Fri"]))
+        if st.button("Save Configuration", use_container_width=True):
+            config_data = {
+                "total_hours": total_hours,
+                "current_hours": current_hours,
+                "daily_hours": daily_hours,
+                "start_date": str(start_date),
+                "country": country,
+                "working_days": days
+            }
+            try:
+                requests.post(f"{API}/save_config", json=config_data, timeout=5)
+                st.session_state.intern_config = config_data
+                st.success("Configuration saved! The AI now knows your internship details.")
+            except Exception:
+                st.error("Could not save config. Make sure the backend is running.")
+
     render_progress(current_hours, total_hours)
     
     # Stats
@@ -420,7 +477,7 @@ elif st.session_state.page == "MentorBridge":
     """, unsafe_allow_html=True)
     
     if "mentorbridge_messages" not in st.session_state:
-        st.session_state.mentorbridge_messages = []
+        st.session_state.mentorbridge_messages = load_chat_history("mentorbridge")
     
     # Scenarios
     if not st.session_state.mentorbridge_messages:
@@ -474,6 +531,9 @@ elif st.session_state.page == "MentorBridge":
 # REPORT WRITER PAGE
 # ══════════════════════════════════════════════════════════════════════════════
 elif st.session_state.page == "Report Writer":
+
+    if "saved_reports" not in st.session_state:
+        st.session_state.saved_reports = load_saved_reports()
     
     # Hero
     st.markdown("""
@@ -582,6 +642,8 @@ elif st.session_state.page == "Report Writer":
                     res = requests.post(f"{API}/chat", json={"message": message}, timeout=30)
                     res.raise_for_status()
                     report = res.json()["reply"]
+                    saved_report = save_report_entry(report_type, task_input, report)
+                    st.session_state.saved_reports = [saved_report] + st.session_state.saved_reports
                     
                     st.markdown('<div class="gradient-divider"></div>', unsafe_allow_html=True)
                     
@@ -659,6 +721,47 @@ elif st.session_state.page == "Report Writer":
                     st.error("Could not connect to backend. Make sure it's running.")
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
+
+    if st.session_state.saved_reports:
+        st.markdown('<div class="gradient-divider"></div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style="color: var(--text-muted); font-size: 0.7rem; font-weight: 600;
+                    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1rem;">
+            Saved Reports
+        </div>
+        """, unsafe_allow_html=True)
+
+        for index, saved_report in enumerate(st.session_state.saved_reports[:5]):
+            created_at = saved_report.get("created_at", "")
+            if created_at:
+                try:
+                    formatted_date = datetime.fromisoformat(created_at).strftime("%B %d, %Y %I:%M %p")
+                except ValueError:
+                    formatted_date = created_at[:10]
+            else:
+                formatted_date = datetime.now().strftime('%Y-%m-%d')
+
+            with st.expander(f"{saved_report.get('report_type', 'Report')} - {formatted_date}"):
+                action_col1, action_col2 = st.columns(2)
+                with action_col1:
+                    if st.button("Load Into Editor", key=f"load_report_{index}", use_container_width=True):
+                        st.session_state.report_type = saved_report.get("report_type", "Daily Report")
+                        st.session_state.task_input = saved_report.get("task_input", "")
+                        st.rerun()
+                with action_col2:
+                    can_delete = bool(saved_report.get("report_id"))
+                    if st.button("Delete Report", key=f"delete_report_{index}", use_container_width=True, disabled=not can_delete):
+                        try:
+                            deleted = delete_saved_report(saved_report["report_id"])
+                            if deleted:
+                                st.session_state.saved_reports = [
+                                    report for report in st.session_state.saved_reports
+                                    if report.get("report_id") != saved_report.get("report_id")
+                                ]
+                                st.rerun()
+                        except Exception:
+                            st.error("Could not delete the saved report.")
+                st.markdown(saved_report.get("content", ""))
     
     # Writing Guidelines
     st.markdown('<div class="gradient-divider"></div>', unsafe_allow_html=True)
