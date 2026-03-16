@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import streamlit.components.v1 as components
 import requests
@@ -5,7 +6,7 @@ from datetime import datetime, date
 import time
 from styles import get_full_css
 
-API = "http://localhost:8001"
+API = st.secrets.get("API_BASE_URL", os.getenv("API_BASE_URL", "http://localhost:8001"))
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PAGE CONFIGURATION
