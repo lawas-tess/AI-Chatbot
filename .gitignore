@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-# Environment variables - NEVER push API keys
+# Environment variables - NEVER push secrets
 .env
 *.env
 
@@ -9,7 +8,7 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Virtual environment
+# Virtual environments
 venv/
 env/
 .venv/
@@ -23,16 +22,3 @@ Thumbs.db
 
 # Streamlit
 .streamlit/secrets.toml
-=======
-# Environment variables
-.env
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-
-# Virtual environments
-venv/
-.venv/
->>>>>>> d3351407c710324370e7acd129e6c3e5f904636d
