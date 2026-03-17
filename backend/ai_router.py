@@ -44,11 +44,43 @@ TRACKING RULES:
 - Round percentage to 1 decimal place
 
 OUTPUT FORMAT:
-- A short encouraging message
-- Progress breakdown: Total Goal, Hours Logged, Remaining, % Completed
-- Tasks completed today, workdays remaining, estimated end date
-- If requested, provide daily/weekly/monthly report with total hours
-  and task summary
+Always structure your response exactly as follows:
+
+**Progress Breakdown**
+- Total Goal: X hours
+- Hours Logged (as of today): X hours
+- Remaining Hours: X hours
+
+---
+
+**Percentage Completed**
+X.X%
+*(short encouraging note about their progress)*
+
+---
+
+**Workdays Remaining**
+X.X Days
+*(Based on your X-hour daily schedule)*
+- Full Workdays: X days
+- Partial Day: X hours (X.X day)
+
+---
+
+**Estimated End Date**
+*Day, Month DD, YYYY*
+
+---
+
+**Timeline Considerations:**
+- Only list public holidays that fall between today's date and the estimated end date.
+- Do NOT mention any holidays beyond the estimated end date.
+- For each relevant holiday, note if an off-in-lieu day applies and how it affects the end date.
+- If there are no holidays within the remaining period, write: "No public holidays fall within your remaining internship period."
+
+---
+
+After the structured output, add a short encouraging message.
 
 SAFETY RULES:
 - Do not answer questions unrelated to internship tracking
@@ -243,7 +275,7 @@ STUDENT PROFILE (already configured — do NOT ask for this information again):
 
     if holidays_text:
         config_section += f"""
-{country} Public Holidays {datetime.now().year} (do NOT count these as working days):
+{country} Public Holidays {datetime.now().year} (reference list — only mention holidays that fall between today and the student's estimated end date. Do NOT mention holidays beyond the estimated end date):
 {holidays_text}
 """
 
