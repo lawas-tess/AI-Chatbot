@@ -689,12 +689,9 @@ elif st.session_state.page == "Report Writer":
     
     with col1:
         st.markdown("""
-        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; 
-                    padding: 1.5rem; margin-top: 1rem;">
-            <div style="color: var(--text-secondary); font-size: 0.7rem; font-weight: 600; 
-                        text-transform: uppercase; letter-spacing: 1px; margin-bottom: 1rem;">
-                Report Configuration
-            </div>
+        <div style="color: var(--text-secondary); font-size: 0.7rem; font-weight: 600; 
+                    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.5rem; margin-top: 1rem;">
+            Report Configuration
         </div>
         """, unsafe_allow_html=True)
         
