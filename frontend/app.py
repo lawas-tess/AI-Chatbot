@@ -86,6 +86,11 @@ def load_saved_reports():
         return res.json().get("reports", [])
     except Exception:
         return []
+    
+def load_report_to_editor(report_type, task_input):
+    """Callback to load a saved report into the editor widgets"""
+    st.session_state.report_type = report_type
+    st.session_state.task_input = task_input
 
 def save_report_entry(report_type, task_input, report_content):
     """Persist a generated report to the backend"""
@@ -850,10 +855,16 @@ elif st.session_state.page == "Report Writer":
             with st.expander(f"{saved_report.get('report_type', 'Report')} - {formatted_date}"):
                 action_col1, action_col2 = st.columns(2)
                 with action_col1:
-                    if st.button("Load Into Editor", key=f"load_report_{index}", use_container_width=True):
-                        st.session_state.report_type = saved_report.get("report_type", "Daily Report")
-                        st.session_state.task_input = saved_report.get("task_input", "")
-                        st.rerun()
+                    st.button(
+                        "Load Into Editor", 
+                        key=f"load_report_{index}", 
+                        use_container_width=True,
+                        on_click=load_report_to_editor,
+                        args=(
+                            saved_report.get("report_type", "Daily Report"), 
+                            saved_report.get("task_input", "")
+                        )
+                    )
                 with action_col2:
                     can_delete = bool(saved_report.get("report_id"))
                     if st.button("Delete Report", key=f"delete_report_{index}", use_container_width=True, disabled=not can_delete):
