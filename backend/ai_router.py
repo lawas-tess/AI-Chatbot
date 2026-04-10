@@ -1,8 +1,16 @@
 import os
+import re
 from datetime import datetime, date, timedelta
 from dotenv import load_dotenv
 from openai import OpenAI
 from database import chat_collection, config_collection
+
+try:
+    from langdetect import detect_langs, DetectorFactory
+    DetectorFactory.seed = 0
+    _LANGDETECT_AVAILABLE = True
+except ImportError:
+    _LANGDETECT_AVAILABLE = False
 
 try:
     import holidays as hol
@@ -13,6 +21,10 @@ except ImportError:
 load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Daily usage limits
+PER_ROUTE_DAILY_LIMIT = 10
+GLOBAL_DAILY_LIMIT = 30
 
 # ── SYSTEM PROMPTS ────────────────────────────────────────────────────────────
 
@@ -293,6 +305,31 @@ REPORT_KEYWORDS = [
     "write a monthly",
 ]
 
+PROGRAMMING_KEYWORDS = [
+    "code", "coding", "programming", "python", "java", "javascript", "c++", "c#",
+    "html", "css", "sql", "api", "backend", "frontend", "framework", "library",
+    "loop", "loops", "array", "arrays", "list", "dictionary", "dict", "tuple",
+    "function", "functions", "class", "classes", "object", "variable", "algorithm",
+    "recursion", "syntax", "compile", "debug", "bug", "runtime", "stack trace"
+]
+
+NON_ENGLISH_KEYWORDS = [
+    "hola", "gracias", "por favor", "adios", "como", "que", "porque", "donde",
+    "cuando", "buenos dias", "buenas tardes", "buenas noches",
+    "kamusta", "kumusta", "salamat", "magandang", "po", "opo", "paano", "bakit",
+    "saan", "kailan", "bonjour", "merci", "au revoir", "xin chao", "cam on",
+    "unsa", "kani", "kana", "nimo", "ako", "ikaw", "siya", "kami", "kamo",
+    "ila", "dili", "wala", "naa", "mao", "ug", "kay", "para", "adto", "ani"
+]
+
+ENGLISH_COMMON_WORDS = {
+    "the", "a", "an", "is", "are", "am", "was", "were", "be", "been", "being",
+    "i", "you", "he", "she", "we", "they", "it", "my", "your", "our", "their",
+    "to", "of", "in", "on", "for", "with", "from", "at", "by", "as", "and", "or",
+    "do", "does", "did", "can", "could", "will", "would", "should", "may", "might",
+    "how", "what", "when", "where", "why", "who", "which", "help", "please"
+}
+
 # ── ROUTE DETECTION ───────────────────────────────────────────────────────────
 
 def detect_route(message: str) -> str:
@@ -303,6 +340,58 @@ def detect_route(message: str) -> str:
         return "report"
     else:
         return "interntrack"
+
+
+def _is_programming_query(message: str) -> bool:
+    message_lower = message.lower()
+    return any(keyword in message_lower for keyword in PROGRAMMING_KEYWORDS)
+
+
+def _is_english_only_message(message: str) -> bool:
+    """Allow only English user input. Uses language detection when available."""
+    message_lower = (message or "").lower().strip()
+    if not message_lower:
+        return True
+
+    # Reject non-ASCII text to avoid handling non-English scripts.
+    if re.search(r"[^\x00-\x7F]", message_lower):
+        return False
+
+    # Prefer robust language detection when the package is installed.
+    if _LANGDETECT_AVAILABLE and len(message_lower) >= 20:
+        try:
+            candidates = detect_langs(message_lower)
+            if not candidates:
+                return False
+
+            top_lang = candidates[0].lang
+            top_prob = candidates[0].prob
+
+            if top_lang == "en":
+                return True
+
+            # Strong non-English confidence means reject.
+            if top_prob >= 0.90:
+                return False
+        except Exception:
+            return False
+
+    # Reject obvious non-English phrases written in ASCII.
+    for keyword in NON_ENGLISH_KEYWORDS:
+        if re.search(rf"\b{re.escape(keyword)}\b", message_lower):
+            return False
+
+    # Fallback lexical check for short/ambiguous ASCII text.
+    tokens = re.findall(r"[a-zA-Z']+", message_lower)
+    if not tokens:
+        return True
+
+    if len(tokens) <= 3:
+        return True
+
+    english_hits = sum(1 for t in tokens if t in ENGLISH_COMMON_WORDS)
+    english_ratio = english_hits / len(tokens)
+    return english_ratio >= 0.15
 
 # ── DATE CALCULATION ──────────────────────────────────────────────────────────
 
@@ -443,10 +532,71 @@ PUBLIC HOLIDAYS WITHIN OJT PERIOD (today → {end_date_str}):
     return INTERNTRACK_PROMPT + config_section
 
 
+def _get_daily_usage_counts() -> dict:
+    """Return today's usage counts for each route and globally (UTC day)."""
+    now = datetime.utcnow()
+    day_start = datetime(now.year, now.month, now.day)
+    next_day = day_start + timedelta(days=1)
+
+    day_filter = {"timestamp": {"$gte": day_start, "$lt": next_day}}
+
+    total_count = chat_collection.count_documents(day_filter)
+    route_counts = {
+        "interntrack": chat_collection.count_documents({**day_filter, "route": "interntrack"}),
+        "mentorbridge": chat_collection.count_documents({**day_filter, "route": "mentorbridge"}),
+        "report": chat_collection.count_documents({**day_filter, "route": "report"})
+    }
+
+    return {
+        "total": total_count,
+        "routes": route_counts
+    }
+
+
 # ── MAIN CHAT FUNCTION ────────────────────────────────────────────────────────
 
 def chat_ai(message, history=None):
     route = detect_route(message)
+
+    if not _is_english_only_message(message):
+        return {
+            "reply": "Please write your message in English only."
+        }
+
+    if _is_programming_query(message):
+        return {
+            "reply": (
+                "I can only help with internship-related topics in InternTrack, "
+                "MentorBridge, and ReportWriter."
+            )
+        }
+
+    # Keep MentorBridge single-turn to avoid carrying prior conversation context.
+    if route == "mentorbridge":
+        history = []
+
+    usage = _get_daily_usage_counts()
+    if usage["total"] >= GLOBAL_DAILY_LIMIT:
+        return {
+            "reply": (
+                "Daily limit reached: 30/30 total messages used today across "
+                "InternTrack, MentorBridge, and ReportWriter."
+            )
+        }
+
+    route_usage = usage["routes"].get(route, 0)
+    if route_usage >= PER_ROUTE_DAILY_LIMIT:
+        route_label = {
+            "interntrack": "InternTrack",
+            "mentorbridge": "MentorBridge",
+            "report": "ReportWriter"
+        }.get(route, route)
+        return {
+            "reply": (
+                f"Daily limit reached for {route_label}: "
+                f"{PER_ROUTE_DAILY_LIMIT}/{PER_ROUTE_DAILY_LIMIT} messages used today."
+            )
+        }
 
     if route == "report":
         system = REPORT_PROMPT
