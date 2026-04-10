@@ -22,10 +22,6 @@ load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Daily usage limits
-PER_ROUTE_DAILY_LIMIT = 10
-GLOBAL_DAILY_LIMIT = 30
-
 # ── SYSTEM PROMPTS ────────────────────────────────────────────────────────────
 
 INTERNTRACK_PROMPT = """
@@ -349,18 +345,32 @@ def _is_programming_query(message: str) -> bool:
 
 def _is_english_only_message(message: str) -> bool:
     """Allow only English user input. Uses language detection when available."""
-    message_lower = (message or "").lower().strip()
+    message_normalized = (message or "").strip().translate(str.maketrans({
+        "\u2018": "'",  # left single quote
+        "\u2019": "'",  # right single quote
+        "\u201c": '"',  # left double quote
+        "\u201d": '"',  # right double quote
+        "\u2013": "-",  # en dash
+        "\u2014": "-",  # em dash
+        "\u2026": "...",  # ellipsis
+        "\u00a0": " "  # non-breaking space
+    }))
+    message_lower = message_normalized.lower()
     if not message_lower:
         return True
 
-    # Reject non-ASCII text to avoid handling non-English scripts.
-    if re.search(r"[^\x00-\x7F]", message_lower):
-        return False
+    # Allow symbols/emojis/numbers, but reject non-Latin alphabetic scripts.
+    for ch in message_lower:
+        if ch.isalpha() and not ("a" <= ch <= "z"):
+            return False
+
+    # Use alphabetic content for language detection so symbols don't skew results.
+    letters_only_text = " ".join(re.findall(r"[a-zA-Z']+", message_lower))
 
     # Prefer robust language detection when the package is installed.
-    if _LANGDETECT_AVAILABLE and len(message_lower) >= 20:
+    if _LANGDETECT_AVAILABLE and len(letters_only_text) >= 20:
         try:
-            candidates = detect_langs(message_lower)
+            candidates = detect_langs(letters_only_text)
             if not candidates:
                 return False
 
@@ -532,27 +542,6 @@ PUBLIC HOLIDAYS WITHIN OJT PERIOD (today → {end_date_str}):
     return INTERNTRACK_PROMPT + config_section
 
 
-def _get_daily_usage_counts() -> dict:
-    """Return today's usage counts for each route and globally (UTC day)."""
-    now = datetime.utcnow()
-    day_start = datetime(now.year, now.month, now.day)
-    next_day = day_start + timedelta(days=1)
-
-    day_filter = {"timestamp": {"$gte": day_start, "$lt": next_day}}
-
-    total_count = chat_collection.count_documents(day_filter)
-    route_counts = {
-        "interntrack": chat_collection.count_documents({**day_filter, "route": "interntrack"}),
-        "mentorbridge": chat_collection.count_documents({**day_filter, "route": "mentorbridge"}),
-        "report": chat_collection.count_documents({**day_filter, "route": "report"})
-    }
-
-    return {
-        "total": total_count,
-        "routes": route_counts
-    }
-
-
 # ── MAIN CHAT FUNCTION ────────────────────────────────────────────────────────
 
 def chat_ai(message, history=None):
@@ -574,29 +563,6 @@ def chat_ai(message, history=None):
     # Keep MentorBridge single-turn to avoid carrying prior conversation context.
     if route == "mentorbridge":
         history = []
-
-    usage = _get_daily_usage_counts()
-    if usage["total"] >= GLOBAL_DAILY_LIMIT:
-        return {
-            "reply": (
-                "Daily limit reached: 30/30 total messages used today across "
-                "InternTrack, MentorBridge, and ReportWriter."
-            )
-        }
-
-    route_usage = usage["routes"].get(route, 0)
-    if route_usage >= PER_ROUTE_DAILY_LIMIT:
-        route_label = {
-            "interntrack": "InternTrack",
-            "mentorbridge": "MentorBridge",
-            "report": "ReportWriter"
-        }.get(route, route)
-        return {
-            "reply": (
-                f"Daily limit reached for {route_label}: "
-                f"{PER_ROUTE_DAILY_LIMIT}/{PER_ROUTE_DAILY_LIMIT} messages used today."
-            )
-        }
 
     if route == "report":
         system = REPORT_PROMPT
