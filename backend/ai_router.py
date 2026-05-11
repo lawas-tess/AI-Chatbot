@@ -1126,7 +1126,7 @@ def chat_ai(message, history=None):
 
                 try:
                     response = client.chat.completions.create(
-                        model="gpt-4o",
+                        model="gpt-4o-mini",
                         messages=messages,
                         tools=TOOL_DEFINITIONS,
                         tool_choice="auto",
